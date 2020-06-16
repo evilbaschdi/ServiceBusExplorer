@@ -34,14 +34,17 @@ using System.Windows.Forms;
 using System.Linq;
 using Microsoft.ServiceBus.Messaging;
 using System.Threading.Tasks;
-using Microsoft.Azure.ServiceBusExplorer.Forms;
-using Microsoft.Azure.ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.Forms;
+using ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.UIHelpers;
+using ServiceBusExplorer.Utilities.Helpers;
+using ServiceBusExplorer.ServiceBus.Helpers;
 
 #endregion
 
 // ReSharper disable once CheckNamespace
 
-namespace Microsoft.Azure.ServiceBusExplorer.Controls
+namespace ServiceBusExplorer.Controls
 {
     public partial class HandleQueueControl : UserControl
     {
@@ -404,8 +407,9 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                 Application.UseWaitCursor = true;
                 var stopwatch = new Stopwatch();
                 stopwatch.Start();
-                var messagingPurger = new MessagingPurger(serviceBusHelper, queueDescription);
-                var count = await messagingPurger.Purge();
+                var newSdkQueueDescription = await serviceBusHelper.GetNewSdkQueueDescription(queueDescription);
+                var purger = new ServiceBusPurger(serviceBusHelper.GetServiceBusHelper2(), newSdkQueueDescription);
+                var count = await purger.Purge();
                 stopwatch.Stop();
                 MainForm.SingletonMainForm.refreshEntity_Click(null, null);
                 writeToLog($"[{count}] messages have been purged from the [{queueDescription.Path}] queue in [{stopwatch.ElapsedMilliseconds}] milliseconds.");
@@ -432,8 +436,9 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                 Application.UseWaitCursor = true;
                 var stopwatch = new Stopwatch();
                 stopwatch.Start();
-                var messagingPurger = new MessagingPurger(serviceBusHelper, queueDescription);
-                var count = await messagingPurger.Purge(purgeDeadLetterQueueInstead: true);
+                var newSdkQueueDescription = await serviceBusHelper.GetNewSdkQueueDescription(queueDescription);
+                var purger = new ServiceBusPurger(serviceBusHelper.GetServiceBusHelper2(), newSdkQueueDescription);
+                var count = await purger.Purge(purgeDeadLetterQueueInstead: true);
                 stopwatch.Stop();
                 MainForm.SingletonMainForm.refreshEntity_Click(null, null);
                 writeToLog($"[{count}] messages have been purged from the deadletter queue of the [{queueDescription.Path}] queue in [{stopwatch.ElapsedMilliseconds}] milliseconds.");
@@ -1221,27 +1226,13 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
             // ForwardTo
             if (!string.IsNullOrWhiteSpace(queueDescription.ForwardTo))
             {
-                int i;
-                txtForwardTo.Text = !string.IsNullOrWhiteSpace(queueDescription.ForwardTo) &&
-                                    (i = queueDescription.ForwardTo.IndexOf('/')) > 0 &&
-                                    i < queueDescription.ForwardTo.Length - 1
-                    ? queueDescription.ForwardTo.Substring(queueDescription.ForwardTo.LastIndexOf('/') + 1)
-                    : queueDescription.ForwardTo;
-
+                txtForwardTo.Text = serviceBusHelper.GetAddressRelativeToNamespace(queueDescription.ForwardTo);
             }
 
             // ForwardDeadLetteredMessagesTo
             if (!string.IsNullOrWhiteSpace(queueDescription.ForwardDeadLetteredMessagesTo))
             {
-                int i;
-                txtForwardDeadLetteredMessagesTo.Text =
-                    !string.IsNullOrWhiteSpace(queueDescription.ForwardDeadLetteredMessagesTo) &&
-                    (i = queueDescription.ForwardDeadLetteredMessagesTo.IndexOf('/')) > 0 &&
-                    i < queueDescription.ForwardDeadLetteredMessagesTo.Length - 1
-                        ? queueDescription.ForwardDeadLetteredMessagesTo.Substring(
-                            queueDescription.ForwardDeadLetteredMessagesTo.LastIndexOf('/') + 1)
-                        : queueDescription.ForwardDeadLetteredMessagesTo;
-
+                txtForwardDeadLetteredMessagesTo.Text = serviceBusHelper.GetAddressRelativeToNamespace(queueDescription.ForwardDeadLetteredMessagesTo);
             }
 
             // MaxQueueSizeInBytes
@@ -2874,9 +2865,7 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
 
         private void btnOpenForwardToForm_Click(object sender, EventArgs e)
         {
-            using (
-                var form = new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle, SelectEntityLabelText)
-            )
+            using (var form = creteSelectEntityFormForPath(txtForwardTo.Text))
             {
                 if (form.ShowDialog() == DialogResult.OK)
                 {
@@ -2887,15 +2876,47 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
 
         private void btnOpenForwardDeadLetteredMessagesToForm_Click(object sender, EventArgs e)
         {
-            using (
-                var form = new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle, SelectEntityLabelText)
-            )
+            using (var form = creteSelectEntityFormForPath(txtForwardDeadLetteredMessagesTo.Text))
             {
                 if (form.ShowDialog() == DialogResult.OK)
                 {
                     txtForwardDeadLetteredMessagesTo.Text = form.Path;
                 }
             }
+        }
+
+        private SelectEntityForm creteSelectEntityFormForPath(string path)
+        {
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                QueueDescription queueDescriptionSource = null;
+                try
+                {
+                    queueDescriptionSource = serviceBusHelper.GetQueue(path);
+                }
+                catch (Exception)
+                {
+                    // we might have found a topic, and the sdk will throw with an indistinguishable MessagingException error.
+                }
+                if (queueDescriptionSource != null)
+                {
+                    return new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle, SelectEntityLabelText, queueDescriptionSource);
+                }
+                TopicDescription topicDescriptionSource = null;
+                try
+                {
+                    topicDescriptionSource = serviceBusHelper.GetTopic(path);
+                }
+                catch (Exception)
+                {
+                    // we might have found a queue, and the sdk will throw with an indistinguishable MessagingException error.
+                }
+                if (topicDescriptionSource != null)
+                {
+                    return new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle, SelectEntityLabelText, topicDescriptionSource);
+                }
+            }
+            return new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle, SelectEntityLabelText);
         }
 
         private void listView_DrawColumnHeader(object sender, DrawListViewColumnHeaderEventArgs e)
@@ -4418,7 +4439,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                 }
                 using (var writer = new StreamWriter(saveFileDialog.FileName))
                 {
-                    var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm, out _));
+                    var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm,
+                         MainForm.SingletonMainForm.UseAscii, out _));
                     writer.Write(MessageSerializationHelper.Serialize(brokeredMessages, bodies));
                 }
             }
@@ -4457,7 +4479,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                     return;
                 }
 
-                var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm, out _));
+                var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm,
+                    MainForm.SingletonMainForm.UseAscii, out _));
                 var count = 0;
                 foreach (var body in bodies)
                 {
@@ -4604,7 +4627,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                 }
                 using (var writer = new StreamWriter(saveFileDialog.FileName))
                 {
-                    var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm, out _));
+                    var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm,
+                         MainForm.SingletonMainForm.UseAscii, out _));
                     writer.Write(MessageSerializationHelper.Serialize(brokeredMessages, bodies));
                 }
             }
@@ -4642,7 +4666,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                     return;
                 }
 
-                var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm, out _));
+                var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm,
+                    MainForm.SingletonMainForm.UseAscii, out _));
                 var count = 0;
                 foreach (var body in bodies)
                 {
@@ -4790,7 +4815,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                 }
                 using (var writer = new StreamWriter(saveFileDialog.FileName))
                 {
-                    var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm, out _));
+                    var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm,
+                         MainForm.SingletonMainForm.UseAscii, out _));
                     writer.Write(MessageSerializationHelper.Serialize(brokeredMessages, bodies));
                 }
             }
@@ -4828,7 +4854,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                     return;
                 }
 
-                var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm, out _));
+                var bodies = brokeredMessages.Select(bm => serviceBusHelper.GetMessageText(bm,
+                    MainForm.SingletonMainForm.UseAscii, out _));
                 var count = 0;
                 foreach (var body in bodies)
                 {

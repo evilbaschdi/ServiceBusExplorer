@@ -31,12 +31,13 @@ using System.Windows.Forms;
 
 using Microsoft.ServiceBus;
 
-using Microsoft.Azure.ServiceBusExplorer.Enums;
-using Microsoft.Azure.ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.Enums;
+using ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.UIHelpers;
 
 #endregion
 
-namespace Microsoft.Azure.ServiceBusExplorer.Forms
+namespace ServiceBusExplorer.Forms
 {
     public partial class OptionForm : Form
     {
@@ -94,10 +95,51 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
         public ConfigFileUse ConfigFileUse { get; private set; }
         #endregion
 
-        #region Event Handlers
+        #region Command Button Event Handlers
+        void btnOpenConfig_Click(object sender, EventArgs e)
+        {
+            var selected = GetConfigFileUseFromUIIndex(cboConfigFile.SelectedIndex);
+
+            if (selected == ConfigFileUse.None)
+            {
+                MessageBox.Show("No file was selected in the list.", "No file opened",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // Open the file(s) depending on what's selected. Create an instance of the 
+            // TwoFilesConfiguration just to get the paths
+            var configuration = TwoFilesConfiguration.Create(selected);
+
+            if (cboConfigFile.SelectedIndex == ApplicationConfigFileIndex ||
+                cboConfigFile.SelectedIndex == BothConfigFileIndex)
+            {
+                // Open the application config file
+                Process.Start(configuration.ApplicationFilePath);
+            }
+
+            if (cboConfigFile.SelectedIndex == UserConfigFileIndex ||
+                cboConfigFile.SelectedIndex == BothConfigFileIndex)
+            {
+                // Open the user config file. It might not exist though
+                if (File.Exists(configuration.UserConfigFilePath))
+                {
+                    Process.Start(configuration.UserConfigFilePath);
+                }
+                else
+                {
+                    MessageBox.Show($"The file {configuration.UserConfigFilePath} does not exist. Click the Save"
+                        + " button to create it.",
+                        "File does exist", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+        }
+
         private void btnOk_Click(object sender, EventArgs e)
         {
             MainSettings.SelectedEntities = GetSelectedEntities();
+            
+            SaveSettings(GetConfigFileUseFromUIIndex(cboConfigFile.SelectedIndex));
 
             DialogResult = DialogResult.OK;
             Close();
@@ -108,6 +150,28 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             DialogResult = DialogResult.Cancel;
             Close();
         }
+
+        void btnSave_Click(object sender, EventArgs e)
+        {
+            // Get selected items
+            MainSettings.SelectedEntities = GetSelectedEntities();
+
+            SaveSettings(GetConfigFileUseFromUIIndex(cboConfigFile.SelectedIndex));
+        }
+
+        void btnOpen_Click(object sender, EventArgs e)
+        {
+            using (var form = new TextForm(MessageTextTitle, txtMessageText.Text))
+            {
+                if (form.ShowDialog() == DialogResult.OK)
+                {
+                    txtMessageText.Text = form.Content;
+                }
+            }
+        }
+        #endregion
+
+        #region Event Handlers
 
         private void logNumericUpDown_ValueChanged(object sender, EventArgs e)
         {
@@ -128,7 +192,7 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             }
         }
 
-        private void btnDefault_Click(object sender, EventArgs e)
+        private void btnReset_Click(object sender, EventArgs e)
         {
             MainSettings.SetDefault();
 
@@ -148,7 +212,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             receiverThinkTimeNumericUpDown.Value = MainSettings.ReceiverThinkTime;
 
             monitorRefreshIntervalNumericUpDown.Value = MainSettings.MonitorRefreshInterval;
-            cboConnectivityMode.SelectedItem = ConnectivityMode.AutoDetect;
+            cboConnectivityMode.SelectedItem = MainSettings.ConnectivityMode;
+            useAmqpWebSocketsCheckBox.Checked = MainSettings.UseAmqpWebSockets;
             cboEncodingType.SelectedItem = EncodingType.ASCII;
 
             saveMessageToFileCheckBox.Checked = MainSettings.SaveMessageToFile;
@@ -163,6 +228,16 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             }
 
             MainSettings.MessageBodyType = MainSettings.MessageBodyType; // .Stream.ToString();
+
+            disableAccidentalDeletionPrevention.Checked = MainSettings.DisableAccidentalDeletionPrevention;
+
+            overrideDefaultProxyCheckBox.Checked = MainSettings.ProxyOverrideDefault;
+            txtProxyAddress.Text = MainSettings.ProxyAddress;
+            txtProxyBypassList.Text = MainSettings.ProxyBypassList;
+            bypassProxyOnLocalAddressesCheckBox.Checked = MainSettings.ProxyBypassOnLocal;
+            useDefaultProxyCredentialsCheckBox.Checked = MainSettings.ProxyUseDefaultCredentials;
+            txtProxyUserName.Text = MainSettings.ProxyUserName;
+            txtProxyPassword.Text = MainSettings.ProxyPassword;
         }
 
         private void retryCountNumericUpDown_ValueChanged(object sender, EventArgs e)
@@ -240,27 +315,6 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
                                     cboConfigFile.Location.Y - 1,
                                     cboConfigFile.Size.Width + 1,
                                     cboConfigFile.Size.Height + 1);
-            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
-                                    cboConnectivityMode.Location.X - 1,
-                                    cboConnectivityMode.Location.Y - 1,
-                                    cboConnectivityMode.Size.Width + 1,
-                                    cboConnectivityMode.Size.Height + 1);
-            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
-                                   cboEncodingType.Location.X - 1,
-                                   cboEncodingType.Location.Y - 1,
-                                   cboEncodingType.Size.Width + 1,
-                                   cboEncodingType.Size.Height + 1);
-            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
-                                    cboSelectedEntities.Location.X - 1,
-                                    cboSelectedEntities.Location.Y - 1,
-                                    cboSelectedEntities.Size.Width + 1,
-                                    cboSelectedEntities.Size.Height + 1);
-            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
-                                    cboDefaultMessageBodyType.Location.X - 1,
-                                    cboDefaultMessageBodyType.Location.Y - 1,
-                                    cboDefaultMessageBodyType.Size.Width + 1,
-                                    cboDefaultMessageBodyType.Size.Height + 1);
-            e.Graphics.DrawLine(new Pen(Color.FromArgb(153, 180, 209), 1), 0, mainPanel.Size.Height - 1, mainPanel.Size.Width, mainPanel.Size.Height - 1);
         }
 
         void senderThinkTimeNumericUpDown_ValueChanged(object sender, EventArgs e)
@@ -283,6 +337,11 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             MainSettings.MonitorRefreshInterval = (int)monitorRefreshIntervalNumericUpDown.Value;
         }
 
+        private void tabControlOptions_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            TabControlHelper.DrawTabControlTabs(tabOptionsControl, e, null);
+        }
+
         void txtLabel_TextChanged(object sender, EventArgs e)
         {
             MainSettings.Label = txtLabel.Text;
@@ -298,6 +357,11 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             MainSettings.MessageText = txtMessageText.Text;
         }
 
+        void txtMessageContentType_TextChanged(object sender, EventArgs e)
+        {
+            MainSettings.MessageContentType = txtMessageContentType.Text;
+        }
+
         void cboConnectivityMode_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (Enum.TryParse<ConnectivityMode>(cboConnectivityMode.Text, true, out var connectivityMode))
@@ -306,28 +370,14 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             }
         }
 
+        private void useAmqpWebSocketsCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            MainSettings.UseAmqpWebSockets = useAmqpWebSocketsCheckBox.Checked;
+        }
+
         void cboDefaultMessageBodyType_SelectedIndexChanged(object sender, EventArgs e)
         {
             MainSettings.MessageBodyType = cboDefaultMessageBodyType.Text;
-        }
-
-        void btnSave_Click(object sender, EventArgs e)
-        {
-            // Get selected items
-            MainSettings.SelectedEntities = GetSelectedEntities();
-
-            SaveSettings(GetConfigFileUseFromUIIndex(cboConfigFile.SelectedIndex));
-        }
-
-        void btnOpen_Click(object sender, EventArgs e)
-        {
-            using (var form = new TextForm(MessageTextTitle, txtMessageText.Text))
-            {
-                if (form.ShowDialog() == DialogResult.OK)
-                {
-                    txtMessageText.Text = form.Content;
-                }
-            }
         }
 
         void cboEncoding_SelectedIndexChanged(object sender, EventArgs e)
@@ -337,43 +387,10 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
                 MainSettings.EncodingType = (EncodingType)cboEncodingType.SelectedItem;
             }
         }
-        void btnOpenConfig_Click(object sender, EventArgs e)
+
+        void disableAccidentalDeletionPrevention_CheckedChanged(object sender, EventArgs e)
         {
-            var selected = GetConfigFileUseFromUIIndex(cboConfigFile.SelectedIndex);
-
-            if (selected == ConfigFileUse.None)
-            {
-                MessageBox.Show("No file was selected in the list.", "No file opened",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            // Open the file(s) depending on what's selected. Create an instance of the 
-            // TwoFilesConfiguration just to get the paths
-            var configuration = TwoFilesConfiguration.Create(selected);
-
-            if (cboConfigFile.SelectedIndex == ApplicationConfigFileIndex ||
-                cboConfigFile.SelectedIndex == BothConfigFileIndex)
-            {
-                // Open the application config file
-                Process.Start(configuration.ApplicationFilePath);
-            }
-
-            if (cboConfigFile.SelectedIndex == UserConfigFileIndex ||
-                cboConfigFile.SelectedIndex == BothConfigFileIndex)
-            {
-                // Open the user config file. It might not exist though
-                if (File.Exists(configuration.UserConfigFilePath))
-                {
-                    Process.Start(configuration.UserConfigFilePath);
-                }
-                else
-                {
-                    MessageBox.Show($"The file {configuration.UserConfigFilePath} does not exist. Click the Save"
-                        + " button to create it.",
-                        "File does exist", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-            }
+            MainSettings.DisableAccidentalDeletionPrevention = disableAccidentalDeletionPrevention.Checked;
         }
 
         void cboConfigFile_SelectionChangeCommitted(object sender, EventArgs e)
@@ -418,6 +435,42 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             lastConfigFileIndex = cboConfigFile.SelectedIndex;
             ConfigFileUse = GetConfigFileUseFromUIIndex(lastConfigFileIndex);
         }
+
+        private void overrideDefaultProxyCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyOverrideDefault = overrideDefaultProxyCheckBox.Checked;
+        }
+
+        private void txtProxyAddress_TextChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyAddress = txtProxyAddress.Text;
+        }
+
+        private void txtProxyBypassList_TextChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyBypassList = txtProxyBypassList.Text;
+        }
+
+        private void bypassProxyOnLocalAddressesCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyBypassOnLocal = bypassProxyOnLocalAddressesCheckBox.Checked;
+        }
+
+        private void useDefaultProxyCredentialsCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyUseDefaultCredentials = useDefaultProxyCredentialsCheckBox.Checked;
+        }
+
+        private void txtProxyUser_TextChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyUserName = txtProxyUserName.Text;
+        }
+
+        private void txtProxyPassword_TextChanged(object sender, EventArgs e)
+        {
+            MainSettings.ProxyPassword = txtProxyPassword.Text;
+        }
+
         #endregion
 
         #region Private methods
@@ -522,9 +575,13 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
                 MainSettings.MessageText);
             SaveSetting(configuration, readSettings, ConfigurationParameters.FileParameter,
                 MainSettings.MessageFile);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.MessageContentTypeParameter,
+                MainSettings.MessageContentType);
 
             SaveSetting(configuration, readSettings, ConfigurationParameters.ConnectivityMode,
                 MainSettings.ConnectivityMode);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.UseAmqpWebSockets,
+                MainSettings.UseAmqpWebSockets);
             SaveSetting(configuration, readSettings, ConfigurationParameters.Encoding,
                 MainSettings.EncodingType);
 
@@ -533,6 +590,24 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
 
             SaveSetting(configuration, readSettings, ConfigurationParameters.MessageBodyType,
                 MainSettings.MessageBodyType);
+
+            SaveSetting(configuration, readSettings, ConfigurationParameters.DisableAccidentalDeletionPrevention,
+                MainSettings.DisableAccidentalDeletionPrevention);
+
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyOverrideDefault,
+                MainSettings.ProxyOverrideDefault);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyAddress,
+                MainSettings.ProxyAddress);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyBypassList,
+                MainSettings.ProxyBypassList);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyBypassOnLocal,
+                MainSettings.ProxyBypassOnLocal);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyUseDefaultCredentials,
+                MainSettings.ProxyUseDefaultCredentials);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyUserName,
+                MainSettings.ProxyUserName);
+            SaveSetting(configuration, readSettings, ConfigurationParameters.ProxyPassword,
+                MainSettings.ProxyPassword);
 
             configuration.Save();
         }
@@ -575,6 +650,7 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             txtLabel.Text = mainSettings.Label;
             txtMessageFile.Text = mainSettings.MessageFile;
             txtMessageText.Text = mainSettings.MessageText;
+            txtMessageContentType.Text = mainSettings.MessageContentType;
             logNumericUpDown.Value = mainSettings.LogFontSize;
             treeViewNumericUpDown.Value = mainSettings.TreeViewFontSize;
             retryCountNumericUpDown.Value = mainSettings.RetryCount;
@@ -593,6 +669,7 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             useAsciiCheckBox.Checked = mainSettings.UseAscii;
 
             cboConnectivityMode.SelectedItem = mainSettings.ConnectivityMode;
+            useAmqpWebSocketsCheckBox.Checked = mainSettings.UseAmqpWebSockets;
             cboEncodingType.SelectedItem = mainSettings.EncodingType;
 
             foreach (var item in mainSettings.SelectedEntities)
@@ -606,12 +683,55 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             }
 
             cboDefaultMessageBodyType.SelectedIndex = (int)bodyType;
+
+            disableAccidentalDeletionPrevention.Checked = mainSettings.DisableAccidentalDeletionPrevention;
+
+            overrideDefaultProxyCheckBox.Checked = mainSettings.ProxyOverrideDefault;
+            txtProxyAddress.Text = mainSettings.ProxyAddress;
+            txtProxyBypassList.Text = mainSettings.ProxyBypassList;
+            bypassProxyOnLocalAddressesCheckBox.Checked = mainSettings.ProxyBypassOnLocal;
+            useDefaultProxyCredentialsCheckBox.Checked = mainSettings.ProxyUseDefaultCredentials;
+            txtProxyUserName.Text = mainSettings.ProxyUserName;
+            txtProxyPassword.Text = mainSettings.ProxyPassword;
+
         }
 
         List<string> GetSelectedEntities()
         {
             return cboSelectedEntities.CheckBoxItems.
                 Where(i => i.Checked).Select(i => i.Text).ToList();
+        }
+
+        private void tabPageGeneral_Paint(object sender, PaintEventArgs e)
+        {
+            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
+                                    cboEncodingType.Location.X - 1,
+                                    cboEncodingType.Location.Y - 1,
+                                    cboEncodingType.Size.Width + 1,
+                                    cboEncodingType.Size.Height + 1);
+            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
+                                    cboSelectedEntities.Location.X - 1,
+                                    cboSelectedEntities.Location.Y - 1,
+                                    cboSelectedEntities.Size.Width + 1,
+                                    cboSelectedEntities.Size.Height + 1);
+        }
+
+        private void tabPageSending_Paint(object sender, PaintEventArgs e)
+        {
+            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
+                                    cboDefaultMessageBodyType.Location.X - 1,
+                                    cboDefaultMessageBodyType.Location.Y - 1,
+                                    cboDefaultMessageBodyType.Size.Width + 1,
+                                    cboDefaultMessageBodyType.Size.Height + 1);
+        }
+
+        private void tabPageConnectivity_Paint(object sender, PaintEventArgs e)
+        {
+            e.Graphics.DrawRectangle(new Pen(SystemColors.ActiveBorder, 1),
+                                    cboConnectivityMode.Location.X - 1,
+                                    cboConnectivityMode.Location.Y - 1,
+                                    cboConnectivityMode.Size.Width + 1,
+                                    cboConnectivityMode.Size.Height + 1);
         }
         #endregion
     }

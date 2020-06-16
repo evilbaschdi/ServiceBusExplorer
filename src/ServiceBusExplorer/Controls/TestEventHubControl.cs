@@ -32,18 +32,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
-using Microsoft.Azure.ServiceBusExplorer.Forms;
-using Microsoft.Azure.ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.Forms;
+using ServiceBusExplorer.Helpers;
 using Microsoft.ServiceBus;
 using Microsoft.ServiceBus.Messaging;
 using Cursor = System.Windows.Forms.Cursor;
-using FastColoredTextBoxNS;
 
 #endregion
 
-namespace Microsoft.Azure.ServiceBusExplorer.Controls
+namespace ServiceBusExplorer.Controls
 {
     using Enums;
+    using ServiceBusExplorer.UIHelpers;
+    using ServiceBusExplorer.Utilities.Helpers;
+    using static ServiceBusExplorer.ServiceBusHelper;
 
     public partial class TestEventHubControl : UserControl
     {

@@ -34,15 +34,18 @@ using System.Threading.Tasks;
 using System.Transactions;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
-using Microsoft.Azure.ServiceBusExplorer.Forms;
-using Microsoft.Azure.ServiceBusExplorer.Helpers;
-using Microsoft.Azure.ServiceBusExplorer.Enums;
+using ServiceBusExplorer.Forms;
+using ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.Enums;
 using Microsoft.ServiceBus.Messaging;
 using Cursor = System.Windows.Forms.Cursor;
 using FastColoredTextBoxNS;
+using static ServiceBusExplorer.ServiceBusHelper;
+using ServiceBusExplorer.UIHelpers;
+using ServiceBusExplorer.Utilities.Helpers;
 #endregion
 
-namespace Microsoft.Azure.ServiceBusExplorer.Controls
+namespace ServiceBusExplorer.Controls
 {
     public partial class TestTopicControl : UserControl
     {
@@ -366,6 +369,7 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
                 txtReceiveBatchSize.Text = DefaulReceiveBatchSize;
                 txtSendTaskCount.Text = DefaultSenderTaskCount;
                 txtReceiveTaskCount.Text = DefaultReceiverTaskCount;
+                txtContentType.Text = mainForm.MessageContentType;
                 txtReceiveTimeout.Text = mainForm?.ReceiveTimeout.ToString(CultureInfo.InvariantCulture);
                 txtServerTimeout.Text = mainForm?.ServerTimeout.ToString(CultureInfo.InvariantCulture);
                 txtPrefetchCount.Text = mainForm?.PrefetchCount.ToString(CultureInfo.InvariantCulture);
@@ -2148,10 +2152,12 @@ namespace Microsoft.Azure.ServiceBusExplorer.Controls
 
         private void txtMessageText_TextChanged(object sender, TextChangedEventArgs e)
         {
-            if (!string.IsNullOrWhiteSpace(txtMessageText.Text))
-            {
-                mainForm.MessageText = txtMessageText.Text;
-            }
+            mainForm.MessageText = txtMessageText.Text;
+        }
+
+        private void txtContentType_TextChanged(object sender, EventArgs e)
+        {
+            mainForm.MessageContentType = txtContentType.Text;
         }
 
         private void grouperMessageFormat_CustomPaint(PaintEventArgs e)

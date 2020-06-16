@@ -32,13 +32,14 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
-using Microsoft.Azure.ServiceBusExplorer.Helpers;
+using ServiceBusExplorer.Helpers;
 using Microsoft.ServiceBus.Messaging;
 using FastColoredTextBoxNS;
+using ServiceBusExplorer.Utilities.Helpers;
 
 #endregion
 
-namespace Microsoft.Azure.ServiceBusExplorer.Forms
+namespace ServiceBusExplorer.Forms
 {
     public partial class MessageForm : Form
     {
@@ -68,8 +69,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
         const string WarningHeader = "The following validations failed:";
         const string WarningFormat = "\n\r - {0}";
         const string SelectBrokeredMessageInspector = "Select a BrokeredMessage inspector...";
-        const string MessageSentMessage = "[{0}] messages where sent to [{1}] in [{2}] milliseconds.";
-        const string MessageMovedMessage = "[{0}] messages where moved to [{1}] in [{2}] milliseconds.";
+        const string MessageSentMessage = "[{0}] messages were sent to [{1}] in [{2}] milliseconds.";
+        const string MessageMovedMessage = "[{0}] messages were moved to [{1}] in [{2}] milliseconds.";
 
         //***************************
         // Constants
@@ -388,7 +389,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
                                 }
                                 else
                                 {
-                                    var messageText = serviceBusHelper.GetMessageText(message, out bodyType);
+                                    var messageText = serviceBusHelper.GetMessageText(message,
+                                        MainForm.SingletonMainForm.UseAscii, out bodyType);
 
                                     // For body type ByteArray cloning is not an option. When cloned, supplied body can be only of a string or stream types, but not byte array :(
                                     outboundMessage = bodyType == BodyType.ByteArray ?
@@ -565,7 +567,7 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
             if (subscriptionWrapper != null)
             {
                 return new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle,
-                   SelectEntityLabelText, subscriptionWrapper);
+                   SelectEntityLabelText, subscriptionWrapper.TopicDescription);
             }
 
             return new SelectEntityForm(SelectEntityDialogTitle, SelectEntityGrouperTitle,
@@ -653,7 +655,8 @@ namespace Microsoft.Azure.ServiceBusExplorer.Forms
 
         void InitializeMessageTextControl(BrokeredMessage message)
         {
-            var messageText = this.serviceBusHelper.GetMessageText(message, out _);
+            var messageText = this.serviceBusHelper.GetMessageText(message,
+                 MainForm.SingletonMainForm.UseAscii, out _);
 
             if (chkAutoindent.Checked && JsonSerializerHelper.IsJson(messageText))
             {
